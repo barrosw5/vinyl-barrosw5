@@ -3,13 +3,15 @@
  *
  *   npm run preview
  *
- * Always writes `preview-playing.svg` and `preview-paused.svg` from fixture
- * tracks. If LASTFM_USER and LASTFM_API_KEY are set (via `.env` or the shell),
- * also writes `preview-real.svg` from the live Last.fm API.
+ * Always writes `preview-playing.svg`, `preview-paused.svg` and `preview-bpm.svg`
+ * from fixture tracks. If LASTFM_USER and LASTFM_API_KEY are set (via `.env` or the
+ * shell), also writes `preview-real.svg` from the live Last.fm API, enriched with
+ * the tempo when GETSONGBPM_API_KEY is set.
  *
  * Open the files in a browser: VS Code's image preview does not always animate SVG.
  */
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
+import { cleanTitle, getTempo } from "../lib/bpm";
 import { getLastTrack, type Track } from "../lib/lastfm";
 import { renderSvg } from "../lib/render";
 
@@ -44,16 +46,29 @@ async function main(): Promise<void> {
     writeFileSync(file, renderSvg(track));
     console.log(`✔ ${file}`);
   }
+  writeFileSync("preview-bpm.svg", renderSvg(FIXTURES["preview-playing.svg"], { bpm: 128 }));
+  console.log("✔ preview-bpm.svg (fixture at 128 bpm)");
 
-  const { LASTFM_USER, LASTFM_API_KEY } = process.env;
+  const { LASTFM_USER, LASTFM_API_KEY, GETSONGBPM_API_KEY } = process.env;
   if (!LASTFM_USER || !LASTFM_API_KEY) {
     console.log("ℹ LASTFM_USER / LASTFM_API_KEY not set — skipping live preview.");
     return;
   }
 
   const track = await getLastTrack(LASTFM_USER, LASTFM_API_KEY);
-  writeFileSync("preview-real.svg", renderSvg(track));
-  console.log("✔ preview-real.svg", track);
+  console.log("✔ Last.fm:", track);
+
+  // Unlike the endpoint, look up the tempo even when paused, so the integration can be tested at any time.
+  let bpm: number | null = null;
+  if (track && GETSONGBPM_API_KEY) {
+    bpm = await getTempo(track.name, track.artist, GETSONGBPM_API_KEY);
+    console.log(`✔ GetSongBPM: "${cleanTitle(track.name)}" by ${track.artist} →`, bpm ?? "not found");
+  } else if (!GETSONGBPM_API_KEY) {
+    console.log("ℹ GETSONGBPM_API_KEY not set — using the default beat.");
+  }
+
+  writeFileSync("preview-real.svg", renderSvg(track, { bpm: bpm ?? undefined }));
+  console.log("✔ preview-real.svg");
 }
 
 main().catch((err: unknown) => {

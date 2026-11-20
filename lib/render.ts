@@ -25,6 +25,16 @@ const FRAME_MS = 80;
 const BARS = 21;
 const BAR_H = 6;
 
+/** Kick drums per revolution when the track's tempo is unknown. */
+const DEFAULT_BEATS_PER_LOOP = 4;
+/**
+ * Tempo range the spectrum can show without aliasing. Faster or slower tempos are
+ * folded into it by halving or doubling (double-time and half-time feel), which keeps
+ * at least ~4.8 frames per beat at FRAMES = 48.
+ */
+const MIN_BPM = 70;
+const MAX_BPM = 160;
+
 /** Brightness ramp used for the grooves, darkest → brightest. */
 const SHADE = " .:-=+*#%@";
 
@@ -50,7 +60,7 @@ const COLORS = {
 
 /** User-facing strings rendered into the card. */
 const LABELS = {
-  nowPlaying: ">> now playing",
+  nowPlaying: (bpm?: number) => (bpm ? `>> now playing · ${bpm} bpm` : ">> now playing"),
   silence: (ago: string) => (ago ? `>> silence · last played ${ago}` : ">> silence"),
   noData: ">> no data from last.fm",
   noTrackAlt: "No track",
@@ -185,14 +195,31 @@ function vinylFrame(rotation: number, armDown: boolean): string[] {
 // ── 2. Spectrum ──────────────────────────────────────────────────────────────
 
 /**
+ * How many kicks fit in one revolution at the given tempo.
+ *
+ * The loop has to be seamless, so the count is rounded to an integer, which puts
+ * the shown tempo within about ±8 BPM of the real one. That is close enough
+ * for the eye.
+ */
+export function beatsPerLoop(bpm?: number): number {
+  if (!bpm || !Number.isFinite(bpm) || bpm <= 0) return DEFAULT_BEATS_PER_LOOP;
+  let folded = bpm;
+  while (folded > MAX_BPM) folded /= 2;
+  while (folded < MIN_BPM) folded *= 2;
+  const loopSeconds = (FRAMES * FRAME_MS) / 1000;
+  return Math.max(1, Math.round((folded * loopSeconds) / 60));
+}
+
+/**
  * Builds the spectrum analyser frames.
  *
  * There is no audio, so the bars are synthetic but deterministic: the PRNG is
- * seeded from the track, so a given song always "looks" the same. Every
- * oscillator completes a whole number of cycles per FRAMES, so the loop is
- * seamless. When paused, returns a single flat frame.
+ * seeded from the track, so a given song always "looks" the same. The kick on
+ * the low bars follows the song's tempo when it is known. Every oscillator
+ * completes a whole number of cycles per FRAMES, so the loop is seamless.
+ * When paused, returns a single flat frame.
  */
-function spectrumFrames(seedText: string, playing: boolean): string[][] {
+function spectrumFrames(seedText: string, playing: boolean, beats: number): string[][] {
   const rand = rng(hash(seedText));
   const bars = Array.from({ length: BARS }, (_, k) => ({
     base: 0.35 + 0.65 * (1 - k / BARS) * (0.6 + 0.4 * rand()), // bass bars sit higher
@@ -204,7 +231,7 @@ function spectrumFrames(seedText: string, playing: boolean): string[][] {
   const total = playing ? FRAMES : 1;
   for (let f = 0; f < total; f++) {
     const t = (f / FRAMES) * TAU;
-    const kick = Math.max(0, Math.cos(t * 4)) ** 8; // 4 sharp "beats" per revolution
+    const kick = Math.max(0, Math.cos(t * beats)) ** 8; // one sharp pulse per beat
     const levels = bars.map((b, k) => {
       if (!playing) return 0.1;
       let v = b.base * (0.3 + 0.7 * Math.abs(Math.sin(t * b.freq + b.phase)));
@@ -241,11 +268,16 @@ function textRows(rows: string[], startLine: number, cls: string): string {
     .join("");
 }
 
+export type RenderOptions = {
+  /** Track tempo. When given, the spectrum kick follows it and the status line shows it. */
+  bpm?: number;
+};
+
 /**
  * Renders the full card for a track.
  * `null` means no data is available and renders a static "no data" card.
  */
-export function renderSvg(track: Track | null): string {
+export function renderSvg(track: Track | null, { bpm }: RenderOptions = {}): string {
   const playing = !!track?.nowPlaying;
   const seed = track ? `${track.artist} - ${track.name}` : "none";
 
@@ -260,7 +292,7 @@ export function renderSvg(track: Track | null): string {
   const height = Math.ceil(PAD * 2 + totalLines * LINE_H);
 
   // Vinyl and spectrum advance together, one combined <g> per frame.
-  const spec = spectrumFrames(seed, playing);
+  const spec = spectrumFrames(seed, playing, beatsPerLoop(bpm));
   const nFrames = playing ? FRAMES : 1;
   const dur = (FRAMES * FRAME_MS) / 1000;
   const step = FRAME_MS / 1000;
@@ -285,7 +317,7 @@ export function renderSvg(track: Track | null): string {
     title = "—";
     artist = "";
   } else {
-    status = playing ? LABELS.nowPlaying : LABELS.silence(timeAgo(track.playedAt));
+    status = playing ? LABELS.nowPlaying(bpm) :LABELS.silence(timeAgo(track.playedAt));
     title = truncate(track.name, MAX_TEXT);
     artist = truncate(track.artist, MAX_TEXT);
   }
