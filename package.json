@@ -1,0 +1,16 @@
+{
+  "name": "vinyl-now-playing",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Vinil em ASCII com a última música do Last.fm, para o README do GitHub",
+  "scripts": {
+    "preview": "tsx scripts/preview.ts",
+    "typecheck": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "@vercel/node": "^5.0.0",
+    "tsx": "^4.19.0",
+    "typescript": "^5.6.0"
+  }
+}
