@@ -1,12 +1,16 @@
 # Verifies the live endpoint, in two situations:
 #   1. After every successful Vercel deployment (preview deployments for PRs, and production).
-#      Vercel's GitHub integration reports deployments as `deployment_status` events.
+#      Vercel's GitHub integration sends a `repository_dispatch` event (`vercel.deployment.success`).
+#      Projects that use GitHub Deployments instead send `deployment_status`. Both are handled.
+#      GitHub only runs these two triggers from the workflow file on the default branch.
 #   2. Every 6 hours against production, to catch failures caused by something outside this repo:
 #      a revoked API key, an upstream API change, an expired Vercel setting…
 # A failed run is shown on the PR / commit, and GitHub emails the repository owner.
 name: Deployment check
 
 on:
+  repository_dispatch:
+    types: [vercel.deployment.success]
   deployment_status:
   schedule:
     - cron: "17 */6 * * *"
@@ -27,15 +31,19 @@ jobs:
     steps:
       - name: Check /api/vinyl
         env:
-          DEPLOYMENT_URL: ${{ github.event.deployment_status.environment_url || github.event.deployment_status.target_url }}
-          ENVIRONMENT: ${{ github.event.deployment_status.environment || 'Production' }}
+          DEPLOYMENT_URL: ${{ github.event.client_payload.url || github.event.deployment_status.environment_url || github.event.deployment_status.target_url }}
+          ENVIRONMENT: ${{ github.event.client_payload.environment || github.event.deployment_status.environment || 'production' }}
           # Optional. Only needed if Vercel Deployment Protection guards preview deployments.
           # Vercel → Project → Settings → Deployment Protection → Protection Bypass for Automation.
           BYPASS_SECRET: ${{ secrets.VERCEL_AUTOMATION_BYPASS_SECRET }}
         run: |
           set -euo pipefail
           base="${DEPLOYMENT_URL:-$PRODUCTION_URL}"
+          [[ "$base" == http* ]] || base="https://$base"
           url="${base%/}/api/vinyl"
+          # Vercel names environments "production"/"preview" or "Production – <project>"/"Preview – <project>".
+          is_production=false
+          [[ "${ENVIRONMENT,,}" == production* ]] && is_production=true
           echo "Checking $url ($ENVIRONMENT)"
 
           headers=(-H "User-Agent: vinyl-now-playing-deployment-check")
@@ -49,8 +57,16 @@ jobs:
             sleep 10
           done
 
-          if [ "$status" = "401" ] && [ -z "$BYPASS_SECRET" ]; then
-            echo "::warning::Deployment is protected by Vercel authentication; set the VERCEL_AUTOMATION_BYPASS_SECRET secret to check it."
+          # Deployment Protection answers 401, or redirects to the Vercel login page.
+          protected=false
+          [ "$status" = "401" ] && protected=true
+          [[ "$status" == 30? ]] && grep -qi '^location: .*vercel\.com' headers.txt && protected=true
+          if $protected && [ -z "$BYPASS_SECRET" ]; then
+            if $is_production; then
+              echo "::error::Production is behind Vercel authentication, so the README image can't load. Disable Deployment Protection for production."
+              exit 1
+            fi
+            echo "::warning::Preview is protected by Vercel authentication; set the VERCEL_AUTOMATION_BYPASS_SECRET secret to check it."
             exit 0
           fi
           if [ "$status" != "200" ]; then
@@ -69,7 +85,7 @@ jobs:
           if grep -q 'no data from last.fm' body.svg; then
             # In production this means the Last.fm credentials or the API are broken.
             # Preview deployments may legitimately lack the environment variables.
-            if [[ "$ENVIRONMENT" == Production* ]]; then
+            if $is_production; then
               echo "::error::Card renders 'no data from last.fm': check LASTFM_USER / LASTFM_API_KEY in Vercel and the function logs."
               exit 1
             fi
