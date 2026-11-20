@@ -1,7 +1,7 @@
 /**
  * Synthetic audio for deterministic tests: no network, no fixtures on disk.
  */
-import type { Signal } from "../lib/dsp";
+import type { Signal } from "../lib/dsp.js";
 
 /** Seeded PRNG (mulberry32), so every test run produces identical audio. */
 export function seeded(seed: number): () => number {

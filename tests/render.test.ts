@@ -1,9 +1,9 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import { BARS, FRAMES, beatsPerLoop, foldTempo } from "../lib/animation";
-import { cleanTitle, normalize } from "../lib/deezer";
-import type { Track } from "../lib/lastfm";
-import { renderSvg } from "../lib/render";
+import { BARS, FRAMES, beatsPerLoop, foldTempo } from "../lib/animation.js";
+import { cleanTitle, normalize } from "../lib/deezer.js";
+import type { Track } from "../lib/lastfm.js";
+import { renderSvg } from "../lib/render.js";
 
 const playing: Track = { name: "Song", artist: "Artist", nowPlaying: true };
 const paused: Track = { name: "Song", artist: "Artist", nowPlaying: false, playedAt: Math.floor(Date.now() / 1000) - 600 };

@@ -1,0 +1,48 @@
+# Runs on every pull request and every push to main.
+# The job names ("Node 20", "Node 22", "Node 24") are the status checks to require in the branch ruleset.
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    name: Node ${{ matrix.node }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    strategy:
+      fail-fast: false
+      matrix:
+        # Every major version the code may run on, locally or on Vercel. Keep in sync with "engines".
+        node: [20, 22, 24]
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node }}
+          cache: npm
+
+      - name: Install
+        run: npm ci
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Unit tests
+        run: npm test
+
+      # Builds to dist/ and loads it with plain Node, as Vercel does. Catches module-format and
+      # runtime-compatibility failures that tsx hides from the unit tests (e.g. ERR_REQUIRE_ESM).
+      - name: Smoke test (compiled build)
+        run: npm run smoke

@@ -1,0 +1,96 @@
+# Verifies the live endpoint, in two situations:
+#   1. After every successful Vercel deployment (preview deployments for PRs, and production).
+#      Vercel's GitHub integration sends a `repository_dispatch` event (`vercel.deployment.success`).
+#      Projects that use GitHub Deployments instead send `deployment_status`. Both are handled.
+#      GitHub only runs these two triggers from the workflow file on the default branch.
+#   2. Every 6 hours against production, to catch failures caused by something outside this repo:
+#      a revoked API key, an upstream API change, an expired Vercel setting…
+# A failed run is shown on the PR / commit, and GitHub emails the repository owner.
+name: Deployment check
+
+on:
+  repository_dispatch:
+    types: [vercel.deployment.success]
+  deployment_status:
+  schedule:
+    - cron: "17 */6 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  PRODUCTION_URL: https://vinyl-barrosw5.vercel.app
+
+jobs:
+  check:
+    # On deployment events, only check deployments that succeeded.
+    if: github.event_name != 'deployment_status' || github.event.deployment_status.state == 'success'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Check /api/vinyl
+        env:
+          DEPLOYMENT_URL: ${{ github.event.client_payload.url || github.event.deployment_status.environment_url || github.event.deployment_status.target_url }}
+          ENVIRONMENT: ${{ github.event.client_payload.environment || github.event.deployment_status.environment || 'production' }}
+          # Optional. Only needed if Vercel Deployment Protection guards preview deployments.
+          # Vercel → Project → Settings → Deployment Protection → Protection Bypass for Automation.
+          BYPASS_SECRET: ${{ secrets.VERCEL_AUTOMATION_BYPASS_SECRET }}
+        run: |
+          set -euo pipefail
+          base="${DEPLOYMENT_URL:-$PRODUCTION_URL}"
+          [[ "$base" == http* ]] || base="https://$base"
+          url="${base%/}/api/vinyl"
+          # Vercel names environments "production"/"preview" or "Production – <project>"/"Preview – <project>".
+          is_production=false
+          [[ "${ENVIRONMENT,,}" == production* ]] && is_production=true
+          echo "Checking $url ($ENVIRONMENT)"
+
+          headers=(-H "User-Agent: vinyl-now-playing-deployment-check")
+          if [ -n "$BYPASS_SECRET" ]; then headers+=(-H "x-vercel-protection-bypass: $BYPASS_SECRET"); fi
+
+          # Retry briefly: a fresh deployment can take a few seconds to serve its first request.
+          for attempt in 1 2 3 4 5; do
+            status=$(curl -sS -o body.svg -w '%{http_code}' -D headers.txt "${headers[@]}" "$url" || echo 000)
+            [ "$status" = "200" ] && break
+            echo "Attempt $attempt: HTTP $status"
+            sleep 10
+          done
+
+          # Deployment Protection answers 401, or redirects to the Vercel login page.
+          protected=false
+          [ "$status" = "401" ] && protected=true
+          [[ "$status" == 30? ]] && grep -qi '^location: .*vercel\.com' headers.txt && protected=true
+          if $protected && [ -z "$BYPASS_SECRET" ]; then
+            if $is_production; then
+              echo "::error::Production is behind Vercel authentication, so the README image can't load. Disable Deployment Protection for production."
+              exit 1
+            fi
+            echo "::warning::Preview is protected by Vercel authentication; set the VERCEL_AUTOMATION_BYPASS_SECRET secret to check it."
+            exit 0
+          fi
+          if [ "$status" != "200" ]; then
+            echo "::error::$url responded HTTP $status"
+            head -c 500 body.svg || true
+            exit 1
+          fi
+          if ! grep -qi '^content-type: image/svg+xml' headers.txt; then
+            echo "::error::Unexpected content type: $(grep -i '^content-type' headers.txt || echo none)"
+            exit 1
+          fi
+          if ! head -c 200 body.svg | grep -q '<svg'; then
+            echo "::error::Response is not an SVG document"
+            exit 1
+          fi
+          if grep -q 'no data from last.fm' body.svg; then
+            # In production this means the Last.fm credentials or the API are broken.
+            # Preview deployments may legitimately lack the environment variables.
+            if $is_production; then
+              echo "::error::Card renders 'no data from last.fm': check LASTFM_USER / LASTFM_API_KEY in Vercel and the function logs."
+              exit 1
+            fi
+            echo "::warning::Preview renders 'no data from last.fm' (environment variables not set for Preview?)."
+          fi
+
+          state=$(grep -o '&gt;&gt; [^<]*' body.svg | head -1 | sed 's/&gt;&gt; //' || true)
+          echo "✔ $url is healthy: ${state:-card rendered} ($(wc -c < body.svg) bytes)"

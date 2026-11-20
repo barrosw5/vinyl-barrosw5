@@ -10,8 +10,7 @@
  *   that starts on a beat and lasts a whole number of beats, so the excerpt
  *   loops in time with the record.
  */
-import { MPEGDecoder } from "mpg123-decoder";
-import { BARS, FRAMES, LOOP_SECONDS, beatsPerLoop, foldTempo } from "./animation";
+import { BARS, FRAMES, LOOP_SECONDS, beatsPerLoop, foldTempo } from "./animation.js";
 import {
   bandLevelsDb,
   beatPhase,
@@ -24,7 +23,7 @@ import {
   toMono,
   type Signal,
   type Spectrogram,
-} from "./dsp";
+} from "./dsp.js";
 
 /** 44.1 kHz ÷ 2 = 22.05 kHz keeps content up to ~11 kHz (hi-hats) while halving the work. */
 const DECIMATION = 2;
@@ -40,6 +39,21 @@ const DISPLAY_RANGE_DB = 30;
 const RELEASE_PER_FRAME = 0.15;
 /** Guard against unexpectedly large downloads. A 30 s 128 kbps preview is about 480 KB. */
 const MAX_PREVIEW_BYTES = 2 * 1024 * 1024;
+
+/**
+ * The decoder is loaded lazily, on first use, and never at module load. If it cannot be loaded
+ * in some runtime, only the audio enrichment fails, and that failure is caught upstream, so the
+ * endpoint keeps serving cards. A static import would take the whole function down with it.
+ */
+let decoderModule: Promise<typeof import("mpg123-decoder")> | undefined;
+
+function loadDecoder(): Promise<typeof import("mpg123-decoder")> {
+  decoderModule ??= import("mpg123-decoder").catch((err: unknown) => {
+    decoderModule = undefined; // allow a retry on the next request
+    throw err;
+  });
+  return decoderModule;
+}
 
 export type AudioAnalysis = {
   /** Tempo detected from the audio, or null when no steady pulse was found. */
@@ -59,6 +73,7 @@ export async function fetchPreview(url: string, signal?: AbortSignal): Promise<S
   if (bytes.byteLength > MAX_PREVIEW_BYTES) throw new Error(`Preview too large (${bytes.byteLength} bytes)`);
 
   // One decoder per call: concurrent invocations can share a warm instance, and decoders hold state.
+  const { MPEGDecoder } = await loadDecoder();
   const decoder = new MPEGDecoder();
   try {
     await decoder.ready;

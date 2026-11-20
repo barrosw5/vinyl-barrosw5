@@ -9,9 +9,9 @@
  * broken image, and the cause is written to the function logs.
  */
 import type { VercelRequest, VercelResponse } from "@vercel/node";
-import { getAudioFeatures } from "../lib/features";
-import { getLastTrack, type Track } from "../lib/lastfm";
-import { renderSvg } from "../lib/render";
+import { getAudioFeatures } from "../lib/features.js";
+import { getLastTrack, type Track } from "../lib/lastfm.js";
+import { renderSvg } from "../lib/render.js";
 
 /** How long Vercel's edge may reuse a response, to avoid hitting upstream APIs on every view. */
 const CDN_MAX_AGE_SECONDS = 30;

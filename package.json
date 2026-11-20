@@ -3,21 +3,25 @@
   "version": "1.0.0",
   "private": true,
   "description": "Animated ASCII vinyl for your GitHub profile README, showing your Last.fm now playing with a real audio spectrum",
+  "type": "module",
+  "engines": {
+    "node": ">=20"
+  },
   "scripts": {
     "preview": "tsx scripts/preview.ts",
-    "test": "tsx --test \"tests/**/*.test.ts\"",
-    "typecheck": "tsc --noEmit"
+    "test": "tsx --test tests/*.test.ts",
+    "typecheck": "tsc --noEmit",
+    "build": "tsc -p tsconfig.build.json",
+    "smoke": "npm run build && node scripts/smoke.mjs",
+    "check": "npm run typecheck && npm test && npm run smoke"
+  },
+  "dependencies": {
+    "mpg123-decoder": "^1.0.3"
   },
   "devDependencies": {
     "@types/node": "^22.0.0",
     "@vercel/node": "^5.0.0",
     "tsx": "^4.19.0",
     "typescript": "^5.6.0"
-  },
-  "dependencies": {
-    "mpg123-decoder": "^1.0.3"
-  },
-  "engines": {
-    "node": ">=22.12"
   }
 }

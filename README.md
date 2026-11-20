@@ -1,5 +1,8 @@
 # vinyl-now-playing
 
+[![CI](https://github.com/barrosw5/vinyl-barrosw5/actions/workflows/ci.yml/badge.svg)](https://github.com/barrosw5/vinyl-barrosw5/actions/workflows/ci.yml)
+[![Deployment check](https://github.com/barrosw5/vinyl-barrosw5/actions/workflows/deployment-check.yml/badge.svg)](https://github.com/barrosw5/vinyl-barrosw5/actions/workflows/deployment-check.yml)
+
 An animated ASCII turntable for your GitHub profile README. It shows what you are listening to on Last.fm, and its spectrum analyser is driven by the song's actual audio.
 
 ```
@@ -35,6 +38,7 @@ An animated ASCII turntable for your GitHub profile README. It shows what you ar
 - [Getting started](#getting-started)
 - [Configuration](#configuration)
 - [Testing](#testing)
+- [CI and releases](#ci-and-releases)
 - [Accuracy](#accuracy)
 - [Performance](#performance)
 - [Limitations](#limitations)
@@ -170,13 +174,18 @@ The SVG is about 105 KB. Text is XML-escaped, and malformed spectrum input is re
 ├── public/
 │   └── index.html        Landing page at / (the card, plus credits)
 ├── scripts/
-│   └── preview.ts        Renders SVGs locally (fixtures, your live track, or any track)
-└── tests/                Unit tests on synthetic audio (node:test, no network)
+│   ├── preview.ts        Renders SVGs locally (fixtures, your live track, or any track)
+│   └── smoke.mjs         Loads the compiled build with plain Node, as Vercel does
+├── tests/                Unit tests on synthetic audio (node:test, no network)
+└── .github/
+    ├── workflows/ci.yml                 Typecheck, tests and smoke test on Node 20 / 22 / 24
+    ├── workflows/deployment-check.yml   Health check of every deployment, plus production every 6 h
+    └── dependabot.yml                   Weekly dependency update PRs
 ```
 
 **Dependency direction.** `api → features → (deezer, audio → dsp)` and `api → render`. `animation` is the only module shared by both branches. `dsp` and `render` are pure: they do no I/O and don't read the clock, apart from `timeAgo`. All network access sits behind `lastfm.ts` and `features.ts`, and the endpoint handles their failures in one place each.
 
-**Runtime dependencies:** one, [`mpg123-decoder`](https://github.com/eshaz/wasm-audio-decoders) (MIT). It is WebAssembly with no native binaries, so it runs unchanged on Vercel.
+**Runtime dependencies:** one, [`mpg123-decoder`](https://github.com/eshaz/wasm-audio-decoders) (MIT). It is WebAssembly with no native binaries, so it runs unchanged on Vercel. It is loaded lazily, with a dynamic `import()` on first use. If it can't be loaded in some runtime, only the audio enrichment fails and the endpoint keeps serving cards.
 
 ---
 
@@ -184,7 +193,7 @@ The SVG is about 105 KB. Text is XML-escaped, and malformed spectrum input is re
 
 ### Prerequisites
 
-- **Node.js 22.12+**. The decoder is an ES module, loaded from CommonJS through `require(esm)`.
+- **Node.js 20+**. The project is native ES modules (`"type": "module"`).
 - A [Last.fm](https://www.last.fm) account that your music player scrobbles to.
 - A **Last.fm API key**. Create one at <https://www.last.fm/api/account/create> and leave the callback URL empty. Only the *API key* is needed.
 - A [Vercel](https://vercel.com) account. The free Hobby plan is enough.
@@ -264,6 +273,8 @@ Each constant is documented at its definition:
 ```bash
 npm test          # 36 unit tests, about 1.5 s, no network
 npm run typecheck # tsc --noEmit
+npm run smoke     # build to dist/ and load it with plain Node, as Vercel does
+npm run check     # all of the above (what CI runs)
 ```
 
 The tests use **synthetic audio** generated from a seed (click tracks, sines and white noise), so they are deterministic and run offline. They cover:
@@ -272,6 +283,35 @@ The tests use **synthetic audio** generated from a seed (click tracks, sines and
 - **Analysis:** the spectrum loop's shape and range, and that bars are louder on the beat than between beats. Also the fallbacks: with no tempo, and with input too short for one loop.
 - **Rendering:** frame count, the idle state, the tempo label, XML escaping, real and malformed spectrum input.
 - **Matching:** title clean-up (`feat.`, remasters, live tags) and Unicode-aware name comparison.
+
+The **smoke test** ([`scripts/smoke.mjs`](scripts/smoke.mjs)) covers what unit tests can't. `tsx` transparently bridges module formats, so a build can pass every unit test and still fail to load in production. For example, a CommonJS build that `require()`s an ES-module dependency crashes with `ERR_REQUIRE_ESM` on Node < 22.12. The smoke test compiles the project, loads it with plain Node, calls the handler, and loads the WASM decoder.
+
+---
+
+## CI and releases
+
+Production must never break silently, so changes reach `main` only through checks:
+
+| Layer | When | What it guarantees |
+|---|---|---|
+| **CI** ([`ci.yml`](.github/workflows/ci.yml)) | Every PR and every push to `main` | Typecheck, unit tests and smoke test pass on **Node 20, 22 and 24**, every runtime the code may meet |
+| **Vercel preview** | Every PR | The exact change is deployed to its own URL before it reaches production |
+| **Deployment check** ([`deployment-check.yml`](.github/workflows/deployment-check.yml)) | After every successful deployment | `/api/vinyl` answers `200 image/svg+xml` with a valid card, and production also has working Last.fm credentials |
+| **Scheduled check** | Every 6 hours, against production | Catches breakage from outside the repo: revoked keys, upstream API changes |
+| **Dependabot** ([`dependabot.yml`](.github/dependabot.yml)) | Weekly | Dependency updates arrive as PRs and go through all of the above |
+| **Branch ruleset** on `main` | Always | No direct pushes or force pushes. Merging requires the CI checks to pass |
+
+**Workflow:**
+
+```bash
+git switch -c my-change          # work on a branch, never on main
+npm run check                    # same checks as CI, locally
+git push -u origin my-change     # then open a pull request on GitHub
+```
+
+Wait for the checks and the Vercel preview, open the preview's `/api/vinyl` if the change is visual, then merge. Vercel deploys `main` to production, and the deployment check verifies it.
+
+> If Vercel *Deployment Protection* is enabled for previews, the deployment check can't reach them and reports a warning instead of failing. To check previews too, create a bypass token under **Vercel → Settings → Deployment Protection → Protection Bypass for Automation** and save it as the repository secret `VERCEL_AUTOMATION_BYPASS_SECRET`.
 
 ---
 

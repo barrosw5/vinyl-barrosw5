@@ -11,8 +11,8 @@
  *
  * Everything here is a pure function of (track, options, current time), with no I/O.
  */
-import { BARS, FRAMES, FRAME_MS, beatsPerLoop } from "./animation";
-import type { Track } from "./lastfm";
+import { BARS, FRAMES, FRAME_MS, beatsPerLoop } from "./animation.js";
+import type { Track } from "./lastfm.js";
 
 // ── Configuration ────────────────────────────────────────────────────────────
 
