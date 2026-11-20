@@ -19,7 +19,7 @@ GitHub READMEs can't run scripts, but they do render images, and **SVG supports 
 3. **Animate.** Every frame becomes an SVG `<g>` of `<text>` rows. A single CSS `@keyframes` rule shows each group for 1/48 of the cycle, and each group gets a negative `animation-delay` to put it in its own time slot. The result plays like a flipbook, in pure CSS.
 4. **Serve.** The SVG is returned with `Cache-Control: no-cache`, so GitHub's image proxy (camo) re-fetches it, and with a 30-second `Vercel-CDN-Cache-Control`, so traffic spikes don't reach Last.fm.
 
-When the track is paused or finished, only one static frame is rendered and the card shows how long ago it was played. If Last.fm can't be reached, the endpoint still returns a valid "no data" card instead of a broken image.
+When nothing is playing, the card switches to an idle state: one static frame, the tonearm parked beside the record, and a `silence · last played 17 min ago` status line. If Last.fm can't be reached, the endpoint still returns a valid "no data" card instead of a broken image.
 
 ### Rendering details
 
@@ -29,6 +29,7 @@ When the track is paused or finished, only one static frame is rendered and the 
 | **Grooves** | `sin(r · 45)` makes concentric rings, mapped onto the brightness ramp `" .:-=+*#%@"`. |
 | **Sheen** | A specular highlight `cos(θ + 0.8)⁶` that stays fixed in screen space, as on a real turntable. |
 | **Motion cues** | Scratch lines and a label wedge are offset by the rotation angle, so they are what visibly spins. |
+| **Tonearm** | A small sprite of `[row, col, char]` cells drawn over the disc. There are two poses: lowered diagonally onto the grooves while playing, and parked vertically on its rest clip when idle. |
 | **Spectrum** | There is no audio. The bars come from sine oscillators seeded from `hash(artist + title)`, so each song has its own stable "signature". Every oscillator completes a whole number of cycles per revolution, so the loop has no visible seam. Low bars also get a periodic kick. |
 
 ---
@@ -128,7 +129,8 @@ All visual settings are constants at the top of [`lib/render.ts`](lib/render.ts)
 | `LABELS` | Text shown on the card (status line, relative time) |
 | `FRAMES`, `FRAME_MS` | Smoothness and speed. Each frame adds about 2 KB, and 48 frames is about 100 KB |
 | `SHADE` | Brightness ramp for the grooves, e.g. try `" ░▒▓█"` |
-| `W`, `H` | Canvas size in characters (the tonearm coordinates assume `W = 64`) |
+| `W`, `H` | Canvas size in characters (the tonearm sprites assume `W = 64`) |
+| `TONEARM_PLAYING`, `TONEARM_RESTING` | The two tonearm poses, as `[row, col, char]` cells |
 | `BARS`, `BAR_H` | Spectrum width and height |
 | `CHAR_W` | Monospace glyph width in px. Adjust it if characters look misaligned |
 

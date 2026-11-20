@@ -51,7 +51,7 @@ const COLORS = {
 /** User-facing strings rendered into the card. */
 const LABELS = {
   nowPlaying: ">> now playing",
-  lastPlayed: (ago: string) => `>> last played · ${ago}`,
+  silence: (ago: string) => (ago ? `>> silence · last played ${ago}` : ">> silence"),
   noData: ">> no data from last.fm",
   noTrackAlt: "No track",
   justNow: "just now",
@@ -110,15 +110,35 @@ function timeAgo(unixSeconds?: number): string {
 
 // ── 1. Vinyl ─────────────────────────────────────────────────────────────────
 
+/** A sprite drawn over the disc, as [row, col, char] cells. Coordinates assume W = 64. */
+type Sprite = readonly (readonly [number, number, string])[];
+
+/** Tonearm lowered diagonally onto the record, with the stylus in the grooves. */
+const TONEARM_PLAYING: Sprite = [
+  [0, 55, "("], [0, 56, "O"], [0, 57, ")"],
+  [1, 56, "|"], [2, 55, "/"], [3, 54, "/"], [4, 53, "/"], [5, 52, "/"],
+  [6, 51, "/"], [7, 50, "/"], [8, 49, "/"], [9, 48, "/"], [10, 47, "/"],
+  [11, 44, "["], [11, 45, "="], [11, 46, "]"],
+];
+
+/** Tonearm parked straight down beside the record, held by its rest clip ("-|-"). */
+const TONEARM_RESTING: Sprite = [
+  [0, 55, "("], [0, 56, "O"], [0, 57, ")"],
+  ...[1, 2, 3, 4, 5, 6, 7, 8, 9, 10].map((row) => [row, 56, "|"] as const),
+  [8, 55, "-"], [8, 57, "-"],
+  [11, 55, "["], [11, 56, "="], [11, 57, "]"],
+];
+
 /**
  * Rasterises one frame of the record at the given rotation (radians).
+ * `armDown` selects the tonearm pose: on the record while playing, parked otherwise.
  *
  * Each cell is mapped to normalised polar coordinates around the disc centre.
  * Using different x/y radii draws an ellipse, which reads as a record seen in
  * slight perspective. The radius `r` selects the zone (spindle, label,
  * grooves, outside) and the angle drives the rotation-dependent details.
  */
-function vinylFrame(rotation: number): string[] {
+function vinylFrame(rotation: number, armDown: boolean): string[] {
   const cx = W * 0.4;
   // A sub-row offset keeps the scratch line from aliasing onto a single text row.
   const cy = (H - 1) / 2 + 0.31;
@@ -156,13 +176,7 @@ function vinylFrame(rotation: number): string[] {
     grid.push(row);
   }
 
-  // Tonearm overlay as [row, col, char]. Coordinates assume W = 64.
-  const arm: [number, number, string][] = [
-    [0, 55, "("], [0, 56, "O"], [0, 57, ")"],
-    [1, 56, "|"], [2, 55, "/"], [3, 54, "/"], [4, 53, "/"], [5, 52, "/"],
-    [6, 51, "/"], [7, 50, "/"], [8, 49, "/"], [9, 48, "/"], [10, 47, "/"],
-    [11, 44, "["], [11, 45, "="], [11, 46, "]"],
-  ];
+  const arm = armDown ? TONEARM_PLAYING : TONEARM_RESTING;
   for (const [j, i, ch] of arm) if (grid[j] && i < W) grid[j][i] = ch;
 
   return grid.map((r) => r.join("").replace(/\s+$/, ""));
@@ -254,7 +268,7 @@ export function renderSvg(track: Track | null): string {
   let frames = "";
   for (let f = 0; f < nFrames; f++) {
     const rot = (f / FRAMES) * TAU;
-    const content = textRows(vinylFrame(rot), 0, "v") + textRows(spec[f], specTop, "s");
+    const content = textRows(vinylFrame(rot, playing), 0, "v") + textRows(spec[f], specTop, "s");
     if (playing) {
       // All frames share one animation. A negative delay offsets each into its own time slot,
       // and the negative start means the loop is already running at t = 0, with no blank first cycle.
@@ -271,7 +285,7 @@ export function renderSvg(track: Track | null): string {
     title = "—";
     artist = "";
   } else {
-    status = playing ? LABELS.nowPlaying : LABELS.lastPlayed(timeAgo(track.playedAt));
+    status = playing ? LABELS.nowPlaying : LABELS.silence(timeAgo(track.playedAt));
     title = truncate(track.name, MAX_TEXT);
     artist = truncate(track.artist, MAX_TEXT);
   }
