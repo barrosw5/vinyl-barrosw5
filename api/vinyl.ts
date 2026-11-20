@@ -9,7 +9,7 @@
  * broken image, and the cause is written to the function logs.
  */
 import type { VercelRequest, VercelResponse } from "@vercel/node";
-import { getTempo } from "../lib/bpm";
+import { getAudioFeatures } from "../lib/features";
 import { getLastTrack, type Track } from "../lib/lastfm";
 import { renderSvg } from "../lib/render";
 
@@ -30,13 +30,13 @@ export default async function handler(_req: VercelRequest, res: VercelResponse) 
     }
   }
 
-  // Tempo is optional and only affects the animated (now playing) state. getTempo never throws.
-  const bpm = track?.nowPlaying ? await getTempo(track.name, track.artist) : null;
+  // Audio features (tempo, real spectrum) only matter while animating. getAudioFeatures never throws.
+  const features = track?.nowPlaying ? await getAudioFeatures(track.name, track.artist) : null;
 
   res.setHeader("Content-Type", "image/svg+xml; charset=utf-8");
   // Browsers and GitHub's image proxy (camo) must not cache, or the track would go stale.
   res.setHeader("Cache-Control", "no-cache, no-store, must-revalidate, max-age=0");
   // Vercel's CDN reads this header instead and may serve a short-lived shared copy.
   res.setHeader("Vercel-CDN-Cache-Control", `max-age=${CDN_MAX_AGE_SECONDS}`);
-  res.status(200).send(renderSvg(track, { bpm: bpm ?? undefined }));
+  res.status(200).send(renderSvg(track, { bpm: features?.bpm, spectrum: features?.spectrum }));
 }

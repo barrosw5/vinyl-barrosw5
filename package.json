@@ -2,9 +2,10 @@
   "name": "vinyl-now-playing",
   "version": "1.0.0",
   "private": true,
-  "description": "Vinil em ASCII com a última música do Last.fm, para o README do GitHub",
+  "description": "Animated ASCII vinyl for your GitHub profile README, showing your Last.fm now playing with a real audio spectrum",
   "scripts": {
     "preview": "tsx scripts/preview.ts",
+    "test": "tsx --test \"tests/**/*.test.ts\"",
     "typecheck": "tsc --noEmit"
   },
   "devDependencies": {
@@ -12,5 +13,11 @@
     "@vercel/node": "^5.0.0",
     "tsx": "^4.19.0",
     "typescript": "^5.6.0"
+  },
+  "dependencies": {
+    "mpg123-decoder": "^1.0.3"
+  },
+  "engines": {
+    "node": ">=22.12"
   }
 }
