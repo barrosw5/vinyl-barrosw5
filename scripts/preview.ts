@@ -1,47 +1,62 @@
-// ─────────────────────────────────────────────────────────────
-//  preview.ts — gera SVGs de teste no teu PC
-//  Corre com:  npm run preview
-//  Sem .env usa músicas inventadas; com .env usa o teu Last.fm a sério.
-// ─────────────────────────────────────────────────────────────
-import { writeFileSync, existsSync, readFileSync } from "node:fs";
+/**
+ * Local preview: renders sample SVGs to the project root.
+ *
+ *   npm run preview
+ *
+ * Always writes `preview-playing.svg` and `preview-paused.svg` from fixture
+ * tracks. If LASTFM_USER and LASTFM_API_KEY are set (via `.env` or the shell),
+ * also writes `preview-real.svg` from the live Last.fm API.
+ *
+ * Open the files in a browser: VS Code's image preview does not always animate SVG.
+ */
+import { existsSync, readFileSync, writeFileSync } from "node:fs";
+import { getLastTrack, type Track } from "../lib/lastfm";
 import { renderSvg } from "../lib/render";
-import { getLastTrack } from "../lib/lastfm";
 
-// Lê o ficheiro .env (se existir) sem precisar de bibliotecas
-if (existsSync(".env")) {
-  for (const line of readFileSync(".env", "utf8").split(/\r?\n/)) {
-    const m = line.match(/^\s*([A-Z_]+)\s*=\s*(.*)\s*$/);
-    if (m) process.env[m[1]] = m[2].replace(/^["']|["']$/g, "");
+const FIXTURES: Record<string, Track> = {
+  "preview-playing.svg": { name: "Song Title", artist: "Some Artist", nowPlaying: true },
+  "preview-paused.svg": {
+    name: "Another Track",
+    artist: "Some Band",
+    nowPlaying: false,
+    playedAt: Math.floor(Date.now() / 1000) - 17 * 60,
+  },
+};
+
+/**
+ * Minimal `.env` loader (KEY=value per line, optional quotes), so the script
+ * has no runtime dependencies. Existing environment variables take precedence.
+ */
+function loadDotEnv(path = ".env"): void {
+  if (!existsSync(path)) return;
+  for (const line of readFileSync(path, "utf8").split(/\r?\n/)) {
+    const match = line.match(/^\s*([A-Z_][A-Z0-9_]*)\s*=\s*(.*?)\s*$/);
+    if (!match) continue;
+    const [, key, value] = match;
+    process.env[key] ??= value.replace(/^["']|["']$/g, "");
   }
 }
 
-async function main() {
-  writeFileSync(
-    "preview-playing.svg",
-    renderSvg({ name: "Nome da Música", artist: "Artista Qualquer", nowPlaying: true })
-  );
-  writeFileSync(
-    "preview-paused.svg",
-    renderSvg({
-      name: "Outra Faixa",
-      artist: "Banda Fixe",
-      nowPlaying: false,
-      playedAt: Math.floor(Date.now() / 1000) - 17 * 60,
-    })
-  );
-  console.log("✔ preview-playing.svg e preview-paused.svg criados");
+async function main(): Promise<void> {
+  loadDotEnv();
+
+  for (const [file, track] of Object.entries(FIXTURES)) {
+    writeFileSync(file, renderSvg(track));
+    console.log(`✔ ${file}`);
+  }
 
   const { LASTFM_USER, LASTFM_API_KEY } = process.env;
-  if (LASTFM_USER && LASTFM_API_KEY) {
-    const track = await getLastTrack(LASTFM_USER, LASTFM_API_KEY);
-    writeFileSync("preview-real.svg", renderSvg(track));
-    console.log("✔ preview-real.svg criado com a tua última música:", track);
-  } else {
-    console.log("ℹ Sem .env — salta o teste com o Last.fm a sério.");
+  if (!LASTFM_USER || !LASTFM_API_KEY) {
+    console.log("ℹ LASTFM_USER / LASTFM_API_KEY not set — skipping live preview.");
+    return;
   }
+
+  const track = await getLastTrack(LASTFM_USER, LASTFM_API_KEY);
+  writeFileSync("preview-real.svg", renderSvg(track));
+  console.log("✔ preview-real.svg", track);
 }
 
-main().catch((e) => {
-  console.error("✖ Erro:", e.message);
+main().catch((err: unknown) => {
+  console.error("✖", err instanceof Error ? err.message : err);
   process.exit(1);
 });
