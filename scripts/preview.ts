@@ -6,7 +6,7 @@
  * Always writes `preview-playing.svg`, `preview-paused.svg` and `preview-bpm.svg`
  * from fixture tracks. If LASTFM_USER and LASTFM_API_KEY are set (via `.env` or the
  * shell), also writes `preview-real.svg` from the live Last.fm API, enriched with
- * the tempo when GETSONGBPM_API_KEY is set.
+ * the song's tempo from Deezer.
  *
  * Open the files in a browser: VS Code's image preview does not always animate SVG.
  */
@@ -49,7 +49,7 @@ async function main(): Promise<void> {
   writeFileSync("preview-bpm.svg", renderSvg(FIXTURES["preview-playing.svg"], { bpm: 128 }));
   console.log("✔ preview-bpm.svg (fixture at 128 bpm)");
 
-  const { LASTFM_USER, LASTFM_API_KEY, GETSONGBPM_API_KEY } = process.env;
+  const { LASTFM_USER, LASTFM_API_KEY } = process.env;
   if (!LASTFM_USER || !LASTFM_API_KEY) {
     console.log("ℹ LASTFM_USER / LASTFM_API_KEY not set — skipping live preview.");
     return;
@@ -60,11 +60,9 @@ async function main(): Promise<void> {
 
   // Unlike the endpoint, look up the tempo even when paused, so the integration can be tested at any time.
   let bpm: number | null = null;
-  if (track && GETSONGBPM_API_KEY) {
-    bpm = await getTempo(track.name, track.artist, GETSONGBPM_API_KEY);
-    console.log(`✔ GetSongBPM: "${cleanTitle(track.name)}" by ${track.artist} →`, bpm ?? "not found");
-  } else if (!GETSONGBPM_API_KEY) {
-    console.log("ℹ GETSONGBPM_API_KEY not set — using the default beat.");
+  if (track) {
+    bpm = await getTempo(track.name, track.artist);
+    console.log(`✔ Deezer tempo: "${cleanTitle(track.name)}" by ${track.artist} →`, bpm ?? "not found");
   }
 
   writeFileSync("preview-real.svg", renderSvg(track, { bpm: bpm ?? undefined }));

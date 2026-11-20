@@ -17,7 +17,7 @@ import { renderSvg } from "../lib/render";
 const CDN_MAX_AGE_SECONDS = 30;
 
 export default async function handler(_req: VercelRequest, res: VercelResponse) {
-  const { LASTFM_USER, LASTFM_API_KEY, GETSONGBPM_API_KEY } = process.env;
+  const { LASTFM_USER, LASTFM_API_KEY } = process.env;
 
   let track: Track | null = null;
   if (!LASTFM_USER || !LASTFM_API_KEY) {
@@ -31,10 +31,7 @@ export default async function handler(_req: VercelRequest, res: VercelResponse) 
   }
 
   // Tempo is optional and only affects the animated (now playing) state. getTempo never throws.
-  const bpm =
-    track?.nowPlaying && GETSONGBPM_API_KEY
-      ? await getTempo(track.name, track.artist, GETSONGBPM_API_KEY)
-      : null;
+  const bpm = track?.nowPlaying ? await getTempo(track.name, track.artist) : null;
 
   res.setHeader("Content-Type", "image/svg+xml; charset=utf-8");
   // Browsers and GitHub's image proxy (camo) must not cache, or the track would go stale.
