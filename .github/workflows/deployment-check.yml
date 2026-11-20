@@ -1,14 +1,17 @@
 # Verifies the live endpoint, in two situations:
-#   1. After every successful Vercel deployment (preview deployments for PRs, and production).
-#      Vercel's GitHub integration sends a `repository_dispatch` event (`vercel.deployment.success`).
-#      Projects that use GitHub Deployments instead send `deployment_status`. Both are handled.
-#      GitHub only runs these two triggers from the workflow file on the default branch.
+#   1. After every successful Vercel deployment of main (production).
+#      Vercel always reports deployments as a commit status with the context "Vercel", which
+#      triggers the `status` event. Depending on the project's integration settings, Vercel may
+#      also send `repository_dispatch` (`vercel.deployment.success`) or `deployment_status`.
+#      All three are handled. GitHub only runs these triggers from the workflow file on the
+#      default branch.
 #   2. Every 6 hours against production, to catch failures caused by something outside this repo:
 #      a revoked API key, an upstream API change, an expired Vercel setting…
 # A failed run is shown on the PR / commit, and GitHub emails the repository owner.
 name: Deployment check
 
 on:
+  status:
   repository_dispatch:
     types: [vercel.deployment.success]
   deployment_status:
@@ -24,8 +27,12 @@ env:
 
 jobs:
   check:
-    # On deployment events, only check deployments that succeeded.
-    if: github.event_name != 'deployment_status' || github.event.deployment_status.state == 'success'
+    # Only check deployments that succeeded. Commit statuses carry no deployment URL, so for those
+    # only production (a successful "Vercel" status on a commit on main) is checked.
+    if: >-
+      (github.event_name != 'deployment_status' || github.event.deployment_status.state == 'success') &&
+      (github.event_name != 'status' || (github.event.context == 'Vercel' && github.event.state == 'success' &&
+        contains(github.event.branches.*.name, 'main')))
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
