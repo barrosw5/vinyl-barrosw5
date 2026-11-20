@@ -1,8 +1,8 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import { BARS, FRAMES } from "../lib/animation";
-import { analyse } from "../lib/audio";
-import { clickTrack, whiteNoise } from "./helpers";
+import { BARS, FRAMES } from "../lib/animation.js";
+import { analyse } from "../lib/audio.js";
+import { clickTrack, whiteNoise } from "./helpers.js";
 
 /** analyse() expects source-rate audio (it decimates by 2), so synthesise at 44.1 kHz. */
 const SOURCE_RATE = 44_100;

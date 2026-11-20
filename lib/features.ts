@@ -9,8 +9,8 @@
  *   artist + title ─▶ Deezer search ─▶ catalogue BPM (often missing for recent releases)
  *                                    └▶ 30 s preview ─▶ decode ─▶ detected BPM + spectrum loop
  */
-import { analyse, fetchPreview } from "./audio";
-import { findTrack } from "./deezer";
+import { analyse, fetchPreview } from "./audio.js";
+import { findTrack } from "./deezer.js";
 
 /** Total network budget (search + track + preview download). It sits on the critical path of an image request. */
 const LOOKUP_TIMEOUT_MS = 4_000;

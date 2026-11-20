@@ -14,9 +14,9 @@
  * Open the files in a browser: VS Code's image preview does not always animate SVG.
  */
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
-import { getAudioFeatures, type AudioFeatures } from "../lib/features";
-import { getLastTrack, type Track } from "../lib/lastfm";
-import { renderSvg } from "../lib/render";
+import { getAudioFeatures, type AudioFeatures } from "../lib/features.js";
+import { getLastTrack, type Track } from "../lib/lastfm.js";
+import { renderSvg } from "../lib/render.js";
 
 const FIXTURES: Record<string, Track> = {
   "preview-playing.svg": { name: "Song Title", artist: "Some Artist", nowPlaying: true },

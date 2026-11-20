@@ -11,8 +11,8 @@ import {
   percentile,
   spectrogram,
   toMono,
-} from "../lib/dsp";
-import { clickTrack, sine, whiteNoise } from "./helpers";
+} from "../lib/dsp.js";
+import { clickTrack, sine, whiteNoise } from "./helpers.js";
 
 const FFT_SIZE = 2048;
 const HOP = 256;

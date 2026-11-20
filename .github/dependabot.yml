@@ -1,0 +1,24 @@
+# Weekly dependency update PRs. Each one runs through CI and gets a Vercel preview deployment,
+# which the deployment check verifies, so an update that breaks the endpoint can't be merged.
+version: 2
+updates:
+  - package-ecosystem: npm
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+    open-pull-requests-limit: 5
+    groups:
+      # Tooling (TypeScript, tsx, type definitions) in a single PR, to keep the noise down.
+      dev-dependencies:
+        dependency-type: development
+        update-types: [minor, patch]
+    commit-message:
+      prefix: "deps"
+
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: monthly
+    commit-message:
+      prefix: "ci"
